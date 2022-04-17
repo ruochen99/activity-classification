@@ -7,19 +7,21 @@ from .encoders import GINEEncoder, GCNEncoder
 from .decoders import ActHead
 import utils
 
-DIM_ORC_NODE_ATTR = 26 + 126
+DIM_ORC_NODE_ATTR = 26 + 125
 # DIM_ORC_EDGE_ATTR = 22 + 4 + 39 + 11
 DIM_NODE_ATTR = 512
+
+
 
 class ActivityModel(nn.Module):
     def __init__(self, cfg, dim=1024):
         super(ActivityModel, self).__init__()
         self.cfg = cfg
-        dim_hidden = dim*2 if cfg.oracle else dim
+        dim_hidden = dim*2
         self.encoder = GCNEncoder(dim=dim_hidden)
         self.mlp_node = MLP(DIM_NODE_ATTR, dim)
-        if cfg.oracle:
-            self.mlp_orc_node = MLP(DIM_ORC_NODE_ATTR, dim)
+        # if cfg.oracle:
+        self.mlp_orc_node = MLP(DIM_ORC_NODE_ATTR, dim)
         self.act_head = ActHead(num_classes=cfg.num_act_classes, dim=dim_hidden)
 
     def get_optimizer(self):
@@ -37,6 +39,9 @@ class ActivityModel(nn.Module):
             # orc_edge_attr = self.mlp_orc_edge(data.orc_edge_attr)
             node_attr = torch.cat([node_attr, orc_node_attr], dim=-1)
             # edge_attr = orc_edge_attr
+        else:
+            pred_node_attr = self.mlp_orc_node(data.pred_node_attr)
+            node_attr = torch.cat([node_attr, pred_node_attr], dim=-1)
 
         # embed = self.encoder(data.edge_index, node_attr, edge_attr)
         embed = self.encoder(data.edge_index, node_attr)

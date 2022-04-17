@@ -33,13 +33,20 @@ class MOMAActivity(datasets.VisionDataset):
         else:
             print("non oracle")
             for act_id in act_ids:
-                non_empty = True
-                for id_hoi in self.moma_api.get_ids_hoi(ids_act=[act_id]):
-                    actors = torch.load(os.path.join(PRED_ACT_DIR, id_hoi))
-                    objects = torch.load(os.path.join(PRED_OBJ_DIR, id_hoi))
-                    if len(actors['bbox']) == 0 and len(objects['bbox']) == 0:
-                        non_empty = False
-                if non_empty:
+                sact_ids = self.moma_api.get_ids_sact(ids_act=[act_id])
+                tmp_sact_ids = []
+                for sact_id in sact_ids:
+                    non_empty = True
+                    hoi_ids = self.moma_api.get_ids_hoi(ids_sact=[sact_id])
+                    for id_hoi in hoi_ids:
+                        actors = torch.load(os.path.join(PRED_ACT_DIR, id_hoi))
+                        objects = torch.load(os.path.join(PRED_OBJ_DIR, id_hoi))
+                        if len(actors['bbox']) == 0 and len(objects['bbox']) == 0:
+                            non_empty = False
+                    if non_empty:
+                        self.sact_ids.append(sact_id)
+                        tmp_sact_ids.append(sact_id)
+                if len(tmp_sact_ids) > 0:
                     self.act_ids.append(act_id)
         print(len(self.act_ids))
         self.add_cfg()
@@ -68,7 +75,7 @@ class MOMAActivity(datasets.VisionDataset):
         sact_ids = [sact_id for sact_id in sact_ids if sact_id in self.sact_ids]
 
         if self.fetch == 'pyg':
-            act = self.moma_api.get_ann_act(act_id)
+            act = self.moma_api.get_anns_act([act_id])[0]
             feats = [self.feats[sact_id] for sact_id in sact_ids]
             return utils.to_pyg_data_act(act.cid, act.id, sact_ids, feats, self.moma_api, self.cfg.oracle)
 

@@ -7,7 +7,7 @@ from torch.utils.data.dataloader import default_collate
 NUM_ACT_CLASSES = 20
 NUM_SACT_CLASSES = 91
 NUM_ACTOR_CLASSES = 26
-NUM_OBJECT_CLASSES = 126
+NUM_OBJECT_CLASSES = 125
 NUM_REL_CLASSES = 19
 NUM_ATT_CLASSES = 4
 NUM_TA_CLASSES = 33
@@ -65,12 +65,48 @@ def build_edge_idx(num_nodes):
 
     return E
 
-def to_pyg_data(hoi_anns, sact_cid, id, oracle=True, feats=None):
+def to_pyg_data_hoi(hoi_ann, oracle=True, feat=None):
+
+    node_attr = feat
+    num_nodes = len(node_attr)
+    # edge_idx = build_edge_idx(num_nodes)
+    edge_idx = hoi_ann.orc_edge_index
+    num_edges = len(edge_idx[0])
+    node_map = hoi_ann.node_map
+
+    node_att = torch.zeros((num_nodes, NUM_ATT_CLASSES))
+    node_ia = torch.zeros((num_nodes, NUM_IA_CLASSES))
+    edge_rel = torch.zeros((num_edges, NUM_REL_CLASSES))
+    edge_ta = torch.zeros((num_edges, NUM_TA_CLASSES))
+
+    for att in hoi_ann.atts:
+        node_att[node_map[att.id_src]][att.cid] = 1
+
+    for ia in hoi_ann.ias:
+        node_ia[node_map[ia.id_src]][ia.cid] = 1
+
+    for i in range(num_edges):
+        src = edge_idx[0][i]
+        trg = edge_idx[1][i]
+        for rel in hoi_ann.rels:
+            if (src == node_map[rel.id_src] and trg == node_map[rel.id_trg]) or (trg == node_map[rel.id_src] and src == node_map[rel.id_trg]):
+                edge_rel[i][rel.cid] = 1
+        for ta in hoi_ann.tas:
+            if (src == node_map[ta.id_src] and trg == node_map[ta.id_trg]) or (trg == node_map[ta.id_src] and src == node_map[ta.id_trg]):
+                edge_ta[i][ta.cid] = 1
+
+    data = Data(edge_index=edge_idx, x=node_attr, orc_node_attr=hoi_ann.orc_node_attr,
+                node_att=node_att, node_ia=node_ia, edge_rel=edge_rel, edge_ta=edge_ta)
+    # print(data)
+    return data
+
+
+def to_pyg_data(hoi_anns, sact_cid, id, moma_api, oracle=False, feats=None):
     data_list = []
     if oracle:
         node_frame_chunk_sizes = [hoi_ann.num_nodes for hoi_ann in hoi_anns]
     else:
-        node_frame_chunk_sizes = [len(hoi_ann['actors']['bbox']) for hoi_ann in hoi_anns]
+        node_frame_chunk_sizes = [len(hoi_ann['actors']['bbox']) + len(hoi_ann['objects']['bbox']) for hoi_ann in hoi_anns]
     feat_list = split_vl(feats, node_frame_chunk_sizes)
 
     for hoi_ann, feat in zip(hoi_anns, feat_list):
@@ -82,7 +118,30 @@ def to_pyg_data(hoi_anns, sact_cid, id, oracle=True, feats=None):
         if oracle:
             data = Data(edge_index=edge_idx, x=node_attr, orc_node_attr=hoi_ann.orc_node_attr)
         else:
-            data = Data(edge_index=edge_idx, x=node_attr)
+            pred_node_attr = torch.zeros((num_nodes, NUM_ACTOR_CLASSES+NUM_OBJECT_CLASSES))
+            # pred_node_attr = []
+            for i in range(len(hoi_ann['actors']['class'])):
+                cname = hoi_ann['actors']['class'][i]
+                act_cid = moma_api.get_taxonomy('actor').index(cname)
+                pred_node_attr[i][act_cid] = 1
+
+                # feat = torch.zeros(NUM_ACTOR_CLASSES + NUM_OBJECT_CLASSES)
+                # feat[act_cid] = 1
+                # pred_node_attr.append(feat)
+
+            for i in range(len(hoi_ann["objects"]['class'])):
+                cname = hoi_ann['objects']['class'][i]
+                obj_cid = moma_api.get_taxonomy('object').index(cname)
+                pred_node_attr[i][NUM_ACTOR_CLASSES+obj_cid] = 1
+
+                # feat = torch.zeros(NUM_ACTOR_CLASSES + NUM_OBJECT_CLASSES)
+                # feat[NUM_ACTOR_CLASSES + obj_cid] = 1
+                # pred_node_attr.append(feat)
+
+            # pred_node_attr = torch.stack(pred_node_attr)
+
+            data = Data(edge_index=edge_idx, x=node_attr, pred_node_attr=torch.tensor(pred_node_attr))
+            # data = Data(edge_index=edge_idx, x=node_attr, pred_node_attr=pred_node_attr)
         data_list.append(data)
     data = Batch.from_data_list(data_list=data_list)
     batch_hoi = data.batch
@@ -94,20 +153,21 @@ def to_pyg_data(hoi_anns, sact_cid, id, oracle=True, feats=None):
 
     return data
 
-def to_pyg_data_act(act_cid, id, sact_ids, feats, moma_api, oracle=True):
+def to_pyg_data_act(act_cid, id, sact_ids, feats, moma_api, oracle=False):
     data_list = []
-
     for i in range(len(sact_ids)):
         sact_id = sact_ids[i]
         hoi_ids = moma_api.get_ids_hoi(ids_sact=[sact_id])
         if oracle:
             hoi_anns = moma_api.get_anns_hoi(hoi_ids)
         else:
-            hoi_anns = {}
+            hoi_anns = []
             for hoi_id in hoi_ids:
-                hoi_anns["actors"] = torch.load(os.path.join(PRED_ACT_DIR, hoi_id))
-                hoi_anns["objects"] = torch.load(os.path.join(PRED_OBJ_DIR, hoi_id))
-        graph = to_pyg_data(hoi_anns, 0, 0, feats[i], oracle)
+                hoi_ann = {}
+                hoi_ann["actors"] = torch.load(os.path.join(PRED_ACT_DIR, hoi_id))
+                hoi_ann["objects"] = torch.load(os.path.join(PRED_OBJ_DIR, hoi_id))
+                hoi_anns.append(hoi_ann)
+        graph = to_pyg_data(hoi_anns, 0, 0, moma_api, oracle, feats[i])
         data_list.append(graph)
     data = Batch.from_data_list(data_list=data_list)
 

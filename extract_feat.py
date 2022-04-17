@@ -16,7 +16,7 @@ import datasets
 import utils
 from momaapi import MOMA
 
-torch.multiprocessing.set_sharing_strategy('file_system')
+
 
 class FeatExtractorModel(nn.Module):
   def __init__(self):
@@ -40,7 +40,7 @@ class FeatExtractor:
     print(self.device)
 
   @staticmethod
-  def extract_bboxes(hoi_anns, oracle=True):
+  def extract_bboxes(hoi_anns, oracle=False):
     bboxes = []
     if oracle:
       for i, hoi in enumerate(hoi_anns):
@@ -55,15 +55,15 @@ class FeatExtractor:
 
     else:
       for i, hoi in enumerate(hoi_anns):
-        actors = hoi[0]
-        objects = hoi[1]
-        for j in len(actors['bbox']):
+        actors = hoi['actors']
+        objects = hoi['objects']
+        for j in range(len(actors['bbox'])):
           x1 = actors['bbox'][j][0]
           y1 = actors['bbox'][j][1]
           x2 = x1 + actors['bbox'][j][2]
           y2 = y1 + actors['bbox'][j][3]
           bboxes.append([i, x1, y1, x2, y2])
-        for k in len(objects['bbox']):
+        for k in range(len(objects['bbox'])):
           x1 = objects['bbox'][k][0]
           y1 = objects['bbox'][k][1]
           x2 = x1 + objects['bbox'][k][2]
@@ -73,7 +73,7 @@ class FeatExtractor:
     return bboxes
 
 
-  def fit(self, model, dataset, oracle=True):
+  def fit(self, model, dataset, oracle=False):
     feat_list, sact_ids = [], []
 
     model = model.to(self.device)
@@ -134,11 +134,11 @@ class FeatExtractor:
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--data_dir', default='/home/ruochenl/data/moma', type=str)
-parser.add_argument('--feats_dir', default='/home/ruochenl/graph/moma-model/feats', type=str)
-parser.add_argument('--num_workers', default=16, type=int)
+parser.add_argument('--feats_dir', default='/home/ruochenl/graph/moma-model/feats_test', type=str)
+parser.add_argument('--num_workers', default=0, type=int)
 parser.add_argument('--batch_size', default=64, type=int)
-parser.add_argument('--oracle', default=True, type=bool)
-parser.add_argument('--split', default=None, type=str)
+parser.add_argument('--oracle', default=False, type=bool)
+parser.add_argument('--split', default='test', type=str)
 # parser.add_argument('--split_by', default='untrim', type=str, choices=['trim', 'untrim'])
 
 
@@ -152,4 +152,6 @@ def main():
 
 
 if __name__ == '__main__':
+  # torch.multiprocessing.set_start_method('spawn')
+  # torch.multiprocessing.set_sharing_strategy('file_system')
   main()

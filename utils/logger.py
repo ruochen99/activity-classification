@@ -1,6 +1,6 @@
 import os
 from torch.utils.tensorboard import SummaryWriter
-import wandb
+# import wandb
 
 class bcolors:
   HEADER = '\033[95m'
@@ -42,17 +42,17 @@ class AverageMeter:
 
 class Logger:
   def __init__(self, save_dir, cfg):
-    wandb.login()
-    wandb.init(
-      # Set the project where this run will be logged
-      project="moma-onehot",
-      # Track hyperparameters and run metadata
-      config={
-        "learning_rate": 0.005,
-        "architecture": "GINE",
-        "dataset": "MOMA",
-        "epochs": 200,
-      })
+    # wandb.login()
+    # wandb.init(
+    #   # Set the project where this run will be logged
+    #   project="moma-onehot",
+    #   # Track hyperparameters and run metadata
+    #   config={
+    #     "learning_rate": 0.005,
+    #     "architecture": "GINE",
+    #     "dataset": "MOMA",
+    #     "epochs": 200,
+    #   })
     self.writer = SummaryWriter(save_dir)
     self.meters = {}
 
@@ -79,7 +79,7 @@ class Logger:
     for tag in self.meters.keys():
       self.writer.add_scalar(tag, self.meters[tag].avg, global_step=epoch)
       print(self.meters[tag])
-      wandb.log({tag: self.meters[tag].avg})
+      # wandb.log({tag: self.meters[tag].avg})
 
     if stats is not None:
       for key, value in stats.items():

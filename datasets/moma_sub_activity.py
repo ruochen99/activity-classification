@@ -5,7 +5,7 @@ import torchvision.transforms.functional as F
 
 import utils
 
-NUM_SACT_CLASSES = 97
+NUM_SACT_CLASSES = 91
 PRED_ACT_DIR = "/home/alanzluo/data/moma/detection/actor"
 PRED_OBJ_DIR = "/home/alanzluo/data/moma/detection/object"
 
@@ -18,6 +18,7 @@ class MOMASubActivity(datasets.VisionDataset):
         self.moma_api = moma_api
         sact_ids = self.moma_api.get_ids_sact(split) # ['00000'...]
         self.sact_ids = []
+        self.sact_ids_missing = []
         if cfg.oracle:
             for sact_id in sact_ids:
                 hoi_ids = self.moma_api.get_ids_hoi(ids_sact=[sact_id])
@@ -25,11 +26,14 @@ class MOMASubActivity(datasets.VisionDataset):
                 total_num_nodes = min([hoi_ann.num_nodes for hoi_ann in hoi_anns])
                 if total_num_nodes > 0:
                     self.sact_ids.append(sact_id)
+                else:
+                    self.sact_ids_missing.append(sact_id)
         else:
             print("non oracle")
             for sact_id in sact_ids:
                 non_empty = True
-                for id_hoi in self.moma_api.get_ids_hoi(ids_sact=[sact_id]):
+                ids_hoi = self.moma_api.get_ids_hoi(ids_sact=[sact_id])
+                for id_hoi in ids_hoi:
                     actors = torch.load(os.path.join(PRED_ACT_DIR, id_hoi))
                     objects = torch.load(os.path.join(PRED_OBJ_DIR, id_hoi))
                     if len(actors['bbox']) == 0 and len(objects['bbox']) == 0:
@@ -40,6 +44,8 @@ class MOMASubActivity(datasets.VisionDataset):
         self.add_cfg()
         if self.fetch == 'pyg':
             self.feats = self.load_feats()
+        # self.sact_ids = self.moma_api.get_ids_sact(split)
+        # print(len(self.sact_ids_missing))
 
     def add_cfg(self):
         setattr(self.cfg, 'num_sact_classes', NUM_SACT_CLASSES)
@@ -60,6 +66,8 @@ class MOMASubActivity(datasets.VisionDataset):
         sact_id = self.sact_ids[index]
         hoi_ids = self.moma_api.get_ids_hoi(ids_sact=[sact_id])
         sact = self.moma_api.get_anns_sact([sact_id])[0]
+
+
         if self.cfg.oracle:
             hoi_anns = self.moma_api.get_anns_hoi(hoi_ids)
             if self.fetch == 'video':
@@ -72,12 +80,14 @@ class MOMASubActivity(datasets.VisionDataset):
                 return sact_id, hoi_anns, videos
 
             elif self.fetch == 'pyg':
-                return utils.to_pyg_data(hoi_anns, sact.cid, sact.id, self.cfg.oracle, self.feats[index])
+                return utils.to_pyg_data(hoi_anns, sact.cid, sact.id, self.moma_api, self.cfg.oracle, self.feats[index])
         else:
-            hoi_anns = {}
+            hoi_anns = []
             for hoi_id in hoi_ids:
-                hoi_anns["actors"] = torch.load(os.path.join(PRED_ACT_DIR, hoi_id))
-                hoi_anns["objects"] = torch.load(os.path.join(PRED_OBJ_DIR, hoi_id))
+                hoi_ann = {}
+                hoi_ann["actors"] = torch.load(os.path.join(PRED_ACT_DIR, hoi_id))
+                hoi_ann["objects"] = torch.load(os.path.join(PRED_OBJ_DIR, hoi_id))
+                hoi_anns.append(hoi_ann)
             if self.fetch == 'video':
                 video_images = []
                 for hoi_id in hoi_ids:
@@ -87,7 +97,7 @@ class MOMASubActivity(datasets.VisionDataset):
                 videos = torch.stack(video_images)
                 return sact_id, hoi_anns, videos
             elif self.fetch == 'pyg':
-                return utils.to_pyg_data(hoi_anns, sact.cid, sact.id, oracle=self.cfg.oracle)
+                return utils.to_pyg_data(hoi_anns, sact.cid, sact.id, self.moma_api, self.cfg.oracle, self.feats[index])
 
 
     def __len__(self):

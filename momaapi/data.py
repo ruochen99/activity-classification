@@ -1,7 +1,7 @@
 import torch
 
 NUM_ACTOR_CLASSES = 26
-NUM_OBJECT_CLASSES = 126
+NUM_OBJECT_CLASSES = 125
 NUM_REL_CLASSES = 19
 NUM_ATT_CLASSES = 4
 NUM_TA_CLASSES = 33
@@ -102,7 +102,7 @@ class HOI:
     self.tas = [Predicate(x, 'ta', taxonomy_ta) for x in ann['transitive_actions']]
     self.atts = [Predicate(x, 'att', taxonomy_att) for x in ann['attributes']]
     self.rels = [Predicate(x, 'rel', taxonomy_rel) for x in ann['relationships']]
-    self.orc_node_attr, self.orc_edge_index, self.orc_edge_attr, self.num_nodes = self.make_graph()
+    self.orc_node_attr, self.orc_edge_index, self.orc_edge_attr, self.num_nodes, self.node_map = self.make_graph()
 
   def make_graph(self):
     # orc_node_attr: [actor/object id one hot] length = NUM_ACTOR_CLASSES + NUM_OBJECT_CLASSES
@@ -153,7 +153,7 @@ class HOI:
     else:
       edge_attr = torch.tensor(edge_attr)
 
-    return node_attr, torch.LongTensor(edge_index).reshape(2, -1), edge_attr, len(node_map)
+    return node_attr, torch.LongTensor(edge_index).reshape(2, -1), edge_attr, len(node_map), node_map
 
   @property
   def ids_actor(self):
